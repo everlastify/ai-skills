@@ -77,14 +77,14 @@ Chỉnh được model (`VEO_MODEL`) và tỉ lệ khung (`VEO_ASPECT_RATIO`: `1
 ### `hub-shared`
 > Upload file qua app hub và trả về link public trên CDN
 
-Đẩy **1 file local** lên S3 thông qua API `POST /api/s3/upload` của app hub, rồi in ra link public qua CloudFront — tiện để share file, host asset, hoặc gửi link cho người khác.
+Đẩy **1 file local** lên S3 bằng **presigned URL** của app hub, rồi in ra link public qua CloudFront — tiện để share file, host asset, hoặc gửi link cho người khác.
 
-Máy chạy skill **không cầm key S3**: script chỉ gửi kèm một API key, server mới là bên ký request và đẩy file lên bucket.
+Máy chạy skill **không cầm key S3**: script gửi API key để xin một URL đã ký sẵn (`POST /api/s3/presign`), rồi `PUT` file thẳng lên S3 — file không đi qua server hub.
 
-Script Node **zero-dependency** — `multipart/form-data` dựng tay bằng `Buffer`, không thư viện ngoài, không `npm install`.
+Script Node **zero-dependency** — không thư viện ngoài, không `npm install`, file được stream thẳng từ ổ cứng nên file lớn không ngốn RAM.
 Token đọc từ biến đã `export` ở shell trước, không có thì mới lấy từ `.env` ở thư mục hiện tại.
 
-Giới hạn **25MB** mỗi file (script kiểm tra trước khi gửi). Link là public và không bao giờ ghi đè — mỗi lần upload ra một link riêng.
+Giới hạn **5GB** mỗi file (trần của 1 lần `PUT` lên S3, script kiểm tra trước khi gửi). Link là public và không bao giờ ghi đè — mỗi lần upload ra một link riêng.
 
 **Yêu cầu:** Node.js 20+ (dùng `process.loadEnvFile`) và biến `HUB_SKILL_TOKEN`.
 
