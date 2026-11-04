@@ -2,6 +2,9 @@
 // Upload 1 file len S3 cua cong ty bang presigned URL cua app hub.
 // Hub chi ky URL, file duoc PUT THANG len S3 — khong di qua server hub.
 // Zero-dependency, stream tu disk nen file lon khong an het RAM.
+//
+//   node upload.cjs <file>              tao file moi
+//   node upload.cjs <file> <key|link>   ghi de file cu, giu nguyen link
 
 const https = require("https");
 const fs = require("fs");
@@ -20,6 +23,7 @@ try {
 
 const HOST = "hub.hbcommerce.co";
 const PRESIGN_PATH = "/api/s3/presign";
+const CDN_PREFIX = "https://files.hbcommerce.co/";
 const TOKEN = process.env.HUB_SKILL_TOKEN;
 const MAX_BYTES = 5 * 1024 * 1024 * 1024; // tran 1 lan PUT cua S3
 
@@ -30,7 +34,7 @@ if (!TOKEN) {
 
 const filePath = process.argv[2];
 if (!filePath) {
-  console.error("Usage: node upload.cjs <file>");
+  console.error("Usage: node upload.cjs <file> [key-or-link-to-overwrite]");
   process.exit(1);
 }
 if (!fs.existsSync(filePath)) {
@@ -49,10 +53,26 @@ if (stats.size > MAX_BYTES) {
   process.exit(1);
 }
 
+// Tham so 2 (tuy chon): key cua file cu de GHI DE, giu nguyen link.
+// Nhan ca key lan nguyen link CDN — copy link ra dan vao la chay.
+let overwriteKey = process.argv[3];
+if (overwriteKey) {
+  if (overwriteKey.startsWith(CDN_PREFIX)) overwriteKey = overwriteKey.slice(CDN_PREFIX.length);
+  overwriteKey = overwriteKey.replace(/^\/+/, "");
+
+  // Chan som o client cho do mat mot vong goi API
+  if (!overwriteKey.startsWith("shared/")) {
+    console.error(`Key must start with "shared/" — got "${overwriteKey}".`);
+    console.error("Files uploaded before 2026-11-04 sit under app-hub/shared/ and cannot be overwritten.");
+    process.exit(1);
+  }
+}
+
 // Buoc 1: xin URL ky san. Server dat ten trong URL + doan Content-Type tu duoi file.
-function presign(name) {
+// payload: { name } de tao moi, { key } de ghi de file da co.
+function presign(payload) {
   return new Promise((resolve, reject) => {
-    const body = Buffer.from(JSON.stringify({ name }));
+    const body = Buffer.from(JSON.stringify(payload));
     const req = https.request(
       {
         hostname: HOST,
@@ -130,9 +150,12 @@ function s3Error(xml) {
 }
 
 (async () => {
+  // Ghi de la thao tac khong undo duoc (bucket tat versioning) -> noi ro truoc khi lam
+  if (overwriteKey) console.log(`Overwriting: ${overwriteKey}`);
+
   let info;
   try {
-    info = await presign(path.basename(filePath));
+    info = await presign(overwriteKey ? { key: overwriteKey } : { name: path.basename(filePath) });
     await put(info.uploadUrl, info.headers || {}, stats.size);
   } catch (e) {
     console.error(e.message);
@@ -140,5 +163,6 @@ function s3Error(xml) {
   }
 
   console.log(`Uploaded: ${info.name} (${stats.size} bytes)`);
+  console.log(`Key: ${info.key}`);
   console.log(info.url);
 })();

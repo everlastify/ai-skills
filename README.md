@@ -84,7 +84,7 @@ Máy chạy skill **không cầm key S3**: script gửi API key để xin một 
 Script Node **zero-dependency** — không thư viện ngoài, không `npm install`, file được stream thẳng từ ổ cứng nên file lớn không ngốn RAM.
 Token đọc từ biến đã `export` ở shell trước, không có thì mới lấy từ `.env` ở thư mục hiện tại.
 
-Giới hạn **5GB** mỗi file (trần của 1 lần `PUT` lên S3, script kiểm tra trước khi gửi). Link là public và không bao giờ ghi đè — mỗi lần upload ra một link riêng.
+Giới hạn **5GB** mỗi file (trần của 1 lần `PUT` lên S3, script kiểm tra trước khi gửi). Link là public, và mặc định mỗi lần upload ra một link riêng — muốn **cập nhật nội dung mà giữ nguyên link** thì truyền thêm key của file cũ.
 
 **Yêu cầu:** Node.js 20+ (dùng `process.loadEnvFile`) và biến `HUB_SKILL_TOKEN`.
 
