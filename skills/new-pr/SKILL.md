@@ -22,11 +22,7 @@ Chạy script precheck nằm trong thư mục `scripts/` **cùng cấp với ch�
 - **macOS / Linux:** `bash <skill-dir>/scripts/precheck.sh <branch>`
 - **Windows:** `powershell -ExecutionPolicy Bypass -File <skill-dir>\scripts\precheck.ps1 <branch>`
 
-`<skill-dir>` tuỳ agent và nơi cài:
-
-- Claude Code (global) — `~/.claude/skills/new-pr` · Windows: `%USERPROFILE%\.claude\skills\new-pr`
-- Codex CLI (global) — `~/.codex/skills/new-pr` · Windows: `%USERPROFILE%\.codex\skills\new-pr`
-- Cài riêng trong project — `.claude/skills/new-pr` hoặc `.codex/skills/new-pr` ngay trong repo
+`<skill-dir>` = **thư mục chứa chính file `SKILL.md` này**.
 
 Hai script trả **cùng một format output**, nên phần đọc kết quả bên dưới dùng chung.
 

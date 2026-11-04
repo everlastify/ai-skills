@@ -27,7 +27,7 @@ Cần đúng **1 biến môi trường**:
 node <skill-dir>/scripts/customize.cjs <product-id>
 ```
 
-`<skill-dir>`: `~/.claude/skills/product-customize` (Claude Code) · `~/.codex/skills/product-customize` (Codex) · `skills/product-customize` (trong repo).
+`<skill-dir>` = **thư mục chứa chính file `SKILL.md` này**.
 
 **Product ID là cách dùng chính.** Script cũng nhận link sản phẩm, lúc đó nó tự lấy ID qua endpoint `.js` của Shopify — chậm hơn một nhịp vì phải gọi thêm 1 request:
 

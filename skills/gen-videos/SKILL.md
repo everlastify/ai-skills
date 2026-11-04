@@ -20,11 +20,7 @@ Input can be **text** (text-to-video) or an **image** (image-to-video / animate 
 
 ## How to use this skill
 
-The script lives in `scripts/` **next to this `SKILL.md`** — call that directory `<skill-dir>`:
-
-- Claude Code (global) — `~/.claude/skills/gen-videos` · Windows: `%USERPROFILE%\.claude\skills\gen-videos`
-- Codex CLI (global) — `~/.codex/skills/gen-videos` · Windows: `%USERPROFILE%\.codex\skills\gen-videos`
-- Project-scoped — `.claude/skills/gen-videos` or `.codex/skills/gen-videos`
+The script lives in `scripts/` **next to this `SKILL.md`** — call that directory `<skill-dir>`.
 
 Video generation is a long-running operation: the script submits the job, polls every 10s until it is done, then downloads the MP4.
 
