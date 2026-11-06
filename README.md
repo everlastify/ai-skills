@@ -133,26 +133,26 @@ Mỗi skill có file `.zip` riêng, giải nén ra là được thư mục đún
 
 | Skill | Tải về |
 |---|---|
-| `git-commit-message` | [git-commit-message.zip](https://github.com/husble/ai-skills/releases/latest/download/git-commit-message.zip) |
-| `new-pr` | [new-pr.zip](https://github.com/husble/ai-skills/releases/latest/download/new-pr.zip) |
-| `pull-request-review` | [pull-request-review.zip](https://github.com/husble/ai-skills/releases/latest/download/pull-request-review.zip) |
-| `gen-html` | [gen-html.zip](https://github.com/husble/ai-skills/releases/latest/download/gen-html.zip) |
-| `gen-images` | [gen-images.zip](https://github.com/husble/ai-skills/releases/latest/download/gen-images.zip) |
-| `gen-videos` | [gen-videos.zip](https://github.com/husble/ai-skills/releases/latest/download/gen-videos.zip) |
-| `hub-shared` | [hub-shared.zip](https://github.com/husble/ai-skills/releases/latest/download/hub-shared.zip) |
-| `product-customize` | [product-customize.zip](https://github.com/husble/ai-skills/releases/latest/download/product-customize.zip) |
-| `noti-lark` | [noti-lark.zip](https://github.com/husble/ai-skills/releases/latest/download/noti-lark.zip) |
+| `git-commit-message` | [git-commit-message.zip](https://github.com/everlastify/ai-skills/releases/latest/download/git-commit-message.zip) |
+| `new-pr` | [new-pr.zip](https://github.com/everlastify/ai-skills/releases/latest/download/new-pr.zip) |
+| `pull-request-review` | [pull-request-review.zip](https://github.com/everlastify/ai-skills/releases/latest/download/pull-request-review.zip) |
+| `gen-html` | [gen-html.zip](https://github.com/everlastify/ai-skills/releases/latest/download/gen-html.zip) |
+| `gen-images` | [gen-images.zip](https://github.com/everlastify/ai-skills/releases/latest/download/gen-images.zip) |
+| `gen-videos` | [gen-videos.zip](https://github.com/everlastify/ai-skills/releases/latest/download/gen-videos.zip) |
+| `hub-shared` | [hub-shared.zip](https://github.com/everlastify/ai-skills/releases/latest/download/hub-shared.zip) |
+| `product-customize` | [product-customize.zip](https://github.com/everlastify/ai-skills/releases/latest/download/product-customize.zip) |
+| `noti-lark` | [noti-lark.zip](https://github.com/everlastify/ai-skills/releases/latest/download/noti-lark.zip) |
 
-Xem tất cả ở trang [Releases](https://github.com/husble/ai-skills/releases/latest). Zip được build lại tự động mỗi khi skill thay đổi, nên link luôn trỏ bản mới nhất.
+Xem tất cả ở trang [Releases](https://github.com/everlastify/ai-skills/releases/latest). Zip được build lại tự động mỗi khi skill thay đổi, nên link luôn trỏ bản mới nhất.
 
 **Cách 2 — Tải cả bộ, không cần biết lệnh**
 
-Mở https://github.com/husble/ai-skills → bấm nút xanh **Code** → **Download ZIP** → giải nén file vừa tải.
+Mở https://github.com/everlastify/ai-skills → bấm nút xanh **Code** → **Download ZIP** → giải nén file vừa tải.
 
 **Cách 3 — Clone (nếu máy đã có git)**
 
 ```bash
-git clone https://github.com/husble/ai-skills.git
+git clone https://github.com/everlastify/ai-skills.git
 ```
 
 Với cách 2 và 3, bên trong sẽ có thư mục `skills/` — mỗi thư mục con là một skill.
