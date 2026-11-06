@@ -99,6 +99,17 @@ Script Node **zero-dependency**. Có `--json` để lấy dữ liệu đã làm 
 
 **Yêu cầu:** Node.js 20+ và biến `HUB_SKILL_TOKEN`. Chỉ đọc được sản phẩm thuộc store của công ty.
 
+### `noti-lark`
+> Bắn thông báo text lên group Lark
+
+Gửi một đoạn text vào group Lark đã gắn custom bot — tiện để báo deploy xong, job chạy lỗi, hay kết quả một việc vừa làm.
+
+Chỉ cần **ID của bot**, script tự ghép thành URL webhook. Dán nguyên URL vào biến cũng chạy.
+
+Script Node **zero-dependency**, dùng `fetch` có sẵn. Lark trả HTTP 200 kể cả khi từ chối, lỗi nằm trong JSON — script kiểm tra cả hai nên exit code 0 mới thật sự là tin đã vào group.
+
+**Yêu cầu:** Node.js 20+ và biến `NOTI_LARK_BOT`.
+
 ## Cấu trúc
 
 ```
@@ -130,6 +141,7 @@ Mỗi skill có file `.zip` riêng, giải nén ra là được thư mục đún
 | `gen-videos` | [gen-videos.zip](https://github.com/husble/ai-skills/releases/latest/download/gen-videos.zip) |
 | `hub-shared` | [hub-shared.zip](https://github.com/husble/ai-skills/releases/latest/download/hub-shared.zip) |
 | `product-customize` | [product-customize.zip](https://github.com/husble/ai-skills/releases/latest/download/product-customize.zip) |
+| `noti-lark` | [noti-lark.zip](https://github.com/husble/ai-skills/releases/latest/download/noti-lark.zip) |
 
 Xem tất cả ở trang [Releases](https://github.com/husble/ai-skills/releases/latest). Zip được build lại tự động mỗi khi skill thay đổi, nên link luôn trỏ bản mới nhất.
 
