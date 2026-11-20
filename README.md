@@ -59,7 +59,7 @@ Một script Node **zero-dependency** (dùng native `fetch`, không cài package
 - **text-to-image** — chỉ cần `--prompt`
 - **image-to-image** — thêm `--image <path>` (lặp nhiều lần được) để edit ảnh hoặc ghép nhiều ảnh nguồn
 
-Chỉnh được số lượng ảnh, tỉ lệ khung (`--aspect` cho Gemini / `--size` cho OpenAI), model, thư mục output. Có `--json` để agent parse kết quả. Tự retry khi dính 429/5xx, ảnh nào lỗi thì skip chứ không đánh rơi cả batch.
+Chỉnh được số lượng ảnh, tỉ lệ khung và độ phân giải (`--aspect` + `--resolution` tới `4k` cho Gemini, thêm `--size` tự do cho OpenAI), chọn trong 11 model qua alias ngắn, thư mục output. Có `--json` để agent parse kết quả. Tự retry khi dính 429/5xx, ảnh nào lỗi thì skip chứ không đánh rơi cả batch.
 
 **Yêu cầu:** Node.js 18+ và API key đặt trong biến môi trường `GEMINI_API_SKILL` hoặc `OPENAI_API_SKILL` (hướng dẫn set cho macOS/Linux và Windows nằm trong `SKILL.md`).
 
