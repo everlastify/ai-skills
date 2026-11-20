@@ -4,7 +4,9 @@
 // Cross-platform: no external binaries, runs on macOS, Windows and Linux.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { basename, extname, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_MODEL = {
   gemini: 'gemini-3.1-flash-image',
@@ -57,6 +59,52 @@ const EXT_BY_MIME = {
   'image/jpeg': '.jpg',
   'image/webp': '.webp',
 };
+
+
+// --- Tim API key: shell > .env o thu muc dang dung > .env canh script ---
+// Parser toi gian co y: chi KEY=value, du cho 2 cai key va giu duoc Node 18+
+// (process.loadEnvFile can Node 20.12+, se pha loi hua Node 18 trong README).
+function parseEnv(text) {
+  const out = {};
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const eq = t.indexOf('=');
+    if (eq < 1) continue;
+    const key = t.slice(0, eq).trim().replace(/^export\s+/, '');
+    let val = t.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
+}
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+// gen.mjs nam trong scripts/, nen thu muc skill (cho co SKILL.md) la cap tren
+const SKILL_DIR = dirname(SCRIPT_DIR);
+
+function readKey(name) {
+  if (process.env[name]) return { value: process.env[name], from: 'shell' };
+  const places = [
+    [process.cwd(), '.env o thu muc dang dung'],
+    [SKILL_DIR, '.env trong thu muc skill'],
+    [SCRIPT_DIR, '.env trong scripts/'],
+  ];
+  for (const [dir, label] of places) {
+    const file = join(dir, '.env');
+    let text;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch (e) {
+      continue;
+    }
+    const val = parseEnv(text)[name];
+    if (val) return { value: val, from: label };
+  }
+  return null;
+}
 
 function parseArgs(argv) {
   const opts = {
@@ -351,8 +399,16 @@ async function main() {
   }
 
   const envVar = opts.provider === 'gemini' ? 'GEMINI_API_SKILL' : 'OPENAI_API_SKILL';
-  const apiKey = process.env[envVar];
-  if (!apiKey) fail(`Missing env ${envVar}. Add it to ~/.zshrc and reload the shell.`);
+  const found = readKey(envVar);
+  if (!found) {
+    fail(
+      `Missing ${envVar}. Set it one of these ways:\n` +
+        `  1. export ${envVar}=... in your shell\n` +
+        `  2. put ${envVar}=... in ${join(process.cwd(), '.env')}\n` +
+        `  3. put ${envVar}=... in ${join(SKILL_DIR, '.env')}  (travels with the skill folder)`,
+    );
+  }
+  const apiKey = found.value;
 
   const model = MODEL_ALIAS[opts.provider][opts.model] ?? opts.model ?? DEFAULT_MODEL[opts.provider];
 
@@ -387,10 +443,12 @@ async function main() {
   const result = opts.provider === 'gemini' ? await genGemini(args) : await genOpenai(args);
 
   const outDir = resolve(opts.out);
-  await mkdir(outDir, { recursive: true });
   const base = `${stamp()}-${slugify(prompt)}`;
   const files = [];
   const dimensions = [];
+
+  // Chi tao thu muc khi that su co anh, tranh de lai thu muc rong khi gen loi
+  if (result.images.length) await mkdir(outDir, { recursive: true });
 
   for (const [i, img] of result.images.entries()) {
     const path = `${outDir}/${base}-${i + 1}${EXT_BY_MIME[img.mime] ?? '.png'}`;
@@ -411,6 +469,7 @@ async function main() {
   const summary = {
     provider: opts.provider,
     model,
+    keyFrom: found.from,
     aspect: opts.aspect,
     resolution: opts.resolution,
     size,

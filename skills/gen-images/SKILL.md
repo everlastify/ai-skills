@@ -19,24 +19,42 @@ Chạy được trên **macOS, Windows và Linux** — không gọi binary ngoà
 
 Cần **Node.js 18+** (script dùng native `fetch`, không cài package nào).
 
-API key đọc từ biến môi trường:
+API key đọc từ 2 biến, chỉ cần provider nào thì set key đó:
 
 - `GEMINI_API_SKILL` - cho provider `gemini` ([lấy key](https://aistudio.google.com/apikey))
 - `OPENAI_API_SKILL` - cho provider `openai` ([lấy key](https://platform.openai.com/api-keys))
 
-Cách set (chỉ cần provider nào thì set key đó):
+Script tìm theo **3 nấc**, dừng ở nấc đầu tiên có key:
+
+| Thứ tự | Nơi tìm | Dùng khi |
+|---|---|---|
+| 1 | Biến đã `export` ở shell | Máy cá nhân, set một lần dùng mãi |
+| 2 | `.env` ở **thư mục đang đứng** | Mỗi project một key riêng |
+| 3 | `.env` trong **thư mục skill** (cạnh `SKILL.md`) | Copy nguyên folder skill đi nơi khác |
+
+Nấc 3 là thứ khiến skill này **mang đi được**: copy cả folder sang máy khác, điền `.env` trong đó, chạy từ bất kỳ đâu cũng được. Trong skill có sẵn **`.env.example`** làm mẫu, copy thành `.env` rồi điền.
 
 ```bash
-# macOS / Linux — thêm vào ~/.zshrc hoặc ~/.bashrc rồi mở lại terminal
+# macOS / Linux — them vao ~/.zshrc hoac ~/.bashrc roi mo lai terminal
 export GEMINI_API_SKILL="your-key-here"
 ```
 
 ```powershell
-# Windows PowerShell — set vĩnh viễn cho user, mở lại terminal là có
+# Windows PowerShell — set vinh vien cho user, mo lai terminal la co
 [Environment]::SetEnvironmentVariable("GEMINI_API_SKILL", "your-key-here", "User")
 ```
 
-Thiếu key → script exit code 1 kèm message rõ ràng, không fail im lặng.
+```bash
+# Hoac dung .env trong thu muc skill
+cp <skill-dir>/.env.example <skill-dir>/.env
+# roi dien key vao file do
+```
+
+⚠️ **Đừng gửi `.env` chứa key thật cho người khác.** Key không giới hạn theo người dùng, ai cầm được cũng gen thoải mái và **chủ key trả tiền**. Đưa `.env.example` để họ tự điền key của họ. Lộ key thì phải rotate ở Google AI Studio hoặc OpenAI, không thu hồi lẻ được.
+
+Thiếu key thì script exit code 1 và in ra đúng 3 đường dẫn có thể đặt, không fail im lặng.
+
+`--json` trả thêm `keyFrom` cho biết key được lấy từ nấc nào, tiện khi debug.
 
 ## Usage
 
