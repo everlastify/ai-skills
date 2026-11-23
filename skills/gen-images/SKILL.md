@@ -1,6 +1,6 @@
 ---
 name: gen-images
-description: Generate images with AI - text-to-image and image-to-image (edit/variation) via Gemini (default) or OpenAI. Use when the user asks to "gen ảnh", "tạo ảnh", "vẽ ảnh", "text to image", "image to image", "edit ảnh bằng AI", "làm mockup ảnh", or wants image variations from a reference image.
+description: Generate images with AI - text-to-image and image-to-image (edit/variation) via Gemini (default) or OpenAI, routed through the company OneRouter gateway. Use when the user asks to "gen ảnh", "tạo ảnh", "vẽ ảnh", "text to image", "image to image", "edit ảnh bằng AI", "làm mockup ảnh", or wants image variations from a reference image.
 ---
 
 # Gen Images
@@ -13,16 +13,18 @@ Hỗ trợ 2 chế độ trong cùng 1 CLI:
 - **text-to-image**: chỉ truyền `--prompt`
 - **image-to-image**: truyền thêm `--image <path>` (lặp lại được nhiều lần) để edit hoặc tạo biến thể từ ảnh gốc
 
+Mọi request đi qua **OneRouter** (`https://model.hbcommerce.co`) — gateway nội bộ của công ty. Chỉ cần **một key duy nhất**, không cần key riêng của OpenAI hay Google nữa.
+
 Chạy được trên **macOS, Windows và Linux** — không gọi binary ngoài nào, kể cả khi đọc kích thước ảnh.
 
 ## Setup
 
 Cần **Node.js 18+** (script dùng native `fetch`, không cài package nào).
 
-API key đọc từ 2 biến, chỉ cần provider nào thì set key đó:
-
-- `GEMINI_API_SKILL` - cho provider `gemini` ([lấy key](https://aistudio.google.com/apikey))
-- `OPENAI_API_SKILL` - cho provider `openai` ([lấy key](https://platform.openai.com/api-keys))
+| Biến | Bắt buộc | Mặc định |
+|---|---|---|
+| `ONEROUTER_KEY` | ✅ | — (xin admin, dạng `or-` + 40 ký tự) |
+| `ONEROUTER_URL` | — | `https://model.hbcommerce.co` |
 
 Script tìm theo **3 nấc**, dừng ở nấc đầu tiên có key:
 
@@ -36,12 +38,12 @@ Nấc 3 là thứ khiến skill này **mang đi được**: copy cả folder san
 
 ```bash
 # macOS / Linux — them vao ~/.zshrc hoac ~/.bashrc roi mo lai terminal
-export GEMINI_API_SKILL="your-key-here"
+export ONEROUTER_KEY="or-..."
 ```
 
 ```powershell
 # Windows PowerShell — set vinh vien cho user, mo lai terminal la co
-[Environment]::SetEnvironmentVariable("GEMINI_API_SKILL", "your-key-here", "User")
+[Environment]::SetEnvironmentVariable("ONEROUTER_KEY", "or-...", "User")
 ```
 
 ```bash
@@ -50,7 +52,7 @@ cp <skill-dir>/.env.example <skill-dir>/.env
 # roi dien key vao file do
 ```
 
-⚠️ **Đừng gửi `.env` chứa key thật cho người khác.** Key không giới hạn theo người dùng, ai cầm được cũng gen thoải mái và **chủ key trả tiền**. Đưa `.env.example` để họ tự điền key của họ. Lộ key thì phải rotate ở Google AI Studio hoặc OpenAI, không thu hồi lẻ được.
+⚠️ **Đừng gửi `.env` chứa key thật cho người khác.** Key tính tiền theo user, ai cầm được cũng gen thoải mái và **chủ key chịu budget**. Đưa `.env.example` để họ xin key riêng. Lộ key thì báo admin revoke.
 
 Thiếu key thì script exit code 1 và in ra đúng 3 đường dẫn có thể đặt, không fail im lặng.
 
@@ -70,13 +72,13 @@ Options:
 |---|---|
 | `--prompt <text>` | Prompt, bắt buộc trừ khi dùng `--prompt-file` |
 | `--prompt-file <path>` | Đọc prompt từ file, dùng cho prompt dài hoặc nhiều dòng |
-| `--provider gemini\|openai` | Mặc định `gemini` |
+| `--provider gemini\|openai` | Mặc định `gemini`. Truyền `--model` thì tự suy ra, khỏi cần |
 | `--model <id>` | Model id hoặc alias, xem bảng dưới |
 | `--aspect <ratio>` | `1:1` (mặc định), `9:16`, `16:9` — áp dụng cho **cả 2 provider** |
 | `--resolution <tier>` | `1k`, `2k` (mặc định) cho cả 2 provider, `4k` chỉ Gemini |
 | `--size <WxH>` | **Chỉ OpenAI**, đè lên `--aspect`/`--resolution` |
-| `--count, -n <N>` | Số ảnh, mặc định `1` |
-| `--image, -i <path>` | Ảnh input cho image-to-image, lặp nhiều lần được (png/jpg/webp/gif) |
+| `--count, -n <N>` | Số ảnh, mặc định `1`. Trên 4 thì tự chia nhiều request |
+| `--image, -i <path>` | Ảnh input cho image-to-image, tối đa 14 ảnh (png/jpg/webp/gif) |
 | `--out, -o <dir>` | Thư mục output, mặc định `./gen-images` |
 | `--json` | In JSON summary, dùng khi agent cần parse kết quả |
 
@@ -98,15 +100,17 @@ Riêng OpenAI có thể đè bằng `--size WxH` với kích thước bất kỳ
 - Cạnh dài **không quá 3840**
 - Hoặc truyền `auto` để model tự chọn
 
-Script kiểm tra trước khi gọi API nên sai là báo ngay, không tốn một lượt gọi. Sau khi lưu file, script đọc kích thước thật từ header ảnh và đối chiếu — OpenAI trả sai size là báo lỗi.
+Script kiểm tra trước khi gọi API nên sai là báo ngay, không tốn một lượt gọi. Sau khi lưu file, script đọc kích thước thật từ header ảnh và đối chiếu — lệch thì in `WARN` nhưng vẫn giữ file.
 
 Gemini **không nhận `--size`**, truyền vào sẽ bị chặn kèm hướng dẫn dùng `--aspect`.
 
 ## Models
 
-`--model` nhận **id đầy đủ hoặc alias**. Không truyền thì dùng mặc định.
+`--model` nhận **id đầy đủ hoặc alias**. Không truyền thì dùng mặc định của provider.
 
-**Gemini** — endpoint `generateContent`, dùng chung cho cả t2i và i2i:
+Id model **tự quyết định provider** — gõ `--model sunburst` là script biết đi OpenAI, khỏi kèm `--provider`.
+
+**Gemini**:
 
 | Model | Alias | Ghi chú |
 |---|---|---|
@@ -114,7 +118,6 @@ Gemini **không nhận `--size`**, truyền vào sẽ bị chặn kèm hướng 
 | `gemini-3.1-flash-lite-image` | `flash-lite` | Rẻ nhất (Nano Banana 2 Lite) |
 | `gemini-3-pro-image` | `pro` | Chất lượng cao nhất, chậm và đắt hơn (Nano Banana Pro) |
 | `gemini-nano-banana-2.1` | `2.1` | Nano Banana 2.1 |
-| `nano-banana-pro-preview` | `pro-preview` | Cùng dòng Pro, tên gọi khác |
 | `gemini-2.5-flash-image` | `2.5-flash` | Bản cũ, chỉ dùng khi cần so sánh |
 
 **OpenAI** — chỉ dùng đời 2.x. Trong một đời, **Flare là bản nhanh, Sunburst là bản chất lượng** và giữ bối cảnh tốt hơn khi edit nhiều bước:
@@ -129,12 +132,21 @@ Gemini **không nhận `--size`**, truyền vào sẽ bị chặn kèm hướng 
 
 Các model đời 1 (`gpt-image-1.5`, `gpt-image-1-mini`, `chatgpt-image-latest`) **không được hỗ trợ** — chúng chỉ nhận 3 size cố định, khác luật với đời 2.x.
 
+Xem model nào key được phép dùng:
+
+```bash
+curl "$ONEROUTER_URL/openai/v1/models" -H "Authorization: Bearer $ONEROUTER_KEY"
+curl "$ONEROUTER_URL/gemini/v1beta/models" -H "x-goog-api-key: $ONEROUTER_KEY"
+```
+
 ## Output
 
 - File lưu vào `--out` (mặc định `./gen-images`), tên `<YYYYMMDD-HHmmss>-<slug-prompt>-<index>.<ext>`
 - Extension theo mime API trả về — Gemini thường trả **JPEG**, OpenAI trả **PNG**
-- Script in đường dẫn tuyệt đối kèm kích thước thật của từng file
-- `--json` trả thêm `dimensions[]`, `size`, `model`, `errors[]`
+- Script in đường dẫn tuyệt đối, kích thước thật của từng file và **chi phí USD** của lượt gen
+- `--json` trả thêm `dimensions[]`, `size`, `model`, `costUsd`, `warnings[]`, `errors[]`
+
+⚠️ **Link CDN của OneRouter là public** — ai có link cũng mở được. Script tải ảnh về máy ngay, nhưng bản trên CDN vẫn còn đó. Đừng gen ảnh chứa thông tin phải giữ kín.
 
 ## Workflow cho agent
 
@@ -154,10 +166,12 @@ Các model đời 1 (`gpt-image-1.5`, `gpt-image-1-mini`, `chatgpt-image-latest`
 
 ## Behavior
 
-- **Gemini**: 1 API call = 1 ảnh, nên `--count N` chạy N call song song, concurrency tối đa 3 để tránh 429
-- **OpenAI**: dùng param `n` tối đa 10 mỗi call, count lớn hơn thì tự chia batch. Image-to-image gọi `/v1/images/edits` (multipart), text-to-image gọi `/v1/images/generations`
-- Retry 1 lần khi gặp 429 hoặc 5xx (backoff 5s / 2s)
-- Ảnh nào lỗi thì skip và ghi vào `errors[]`, các ảnh còn lại vẫn được lưu. Exit code 1 nếu không lưu được ảnh nào
+- Một endpoint `POST /v1/images` dùng chung cho cả 2 provider — đổi provider chỉ là đổi `model`
+- Tối đa **4 ảnh mỗi request**, `--count` lớn hơn thì tự chia batch, chạy tối đa 3 request song song
+- Ảnh input đi kèm dưới dạng data URL, mỗi ảnh tối đa 20MB và tổng body 60MB — script chặn trước khi gửi
+- API trả về link CDN, script tải về rồi mới ghi ra đĩa
+- Retry 1 lần khi gặp 429 hoặc 5xx (backoff 5s / 2s). Lỗi `budget_exceeded` (402) thì **không** retry
+- Batch nào lỗi thì skip và ghi vào `errors[]`, các ảnh còn lại vẫn được lưu. Exit code 1 nếu không lưu được ảnh nào
 - Kích thước ảnh đọc trực tiếp từ header PNG / JPEG / WebP bằng JS thuần, không gọi `sips` hay `magick`, nên không lệ thuộc hệ điều hành
 
 ## Examples
@@ -179,7 +193,7 @@ node <skill-dir>/scripts/gen.mjs \
   -i sources/design.png -i sources/model.jpg
 
 # OpenAI, size tu chon, output JSON
-node <skill-dir>/scripts/gen.mjs --provider openai \
+node <skill-dir>/scripts/gen.mjs --model sunburst \
   --prompt "minimal flat-design logo of a happy dog, white background" \
   --size 1024x1536 --json
 
@@ -190,8 +204,4 @@ node <skill-dir>/scripts/gen.mjs --model pro --aspect 9:16 --resolution 1k \
 # Gemini 4K, chi Gemini moi co bac nay
 node <skill-dir>/scripts/gen.mjs --resolution 4k --aspect 16:9 \
   --prompt "wide landscape of terraced rice fields at sunrise"
-
-# OpenAI ban chat luong thay vi ban nhanh mac dinh
-node <skill-dir>/scripts/gen.mjs --provider openai --model sunburst \
-  --prompt "studio product shot of a ceramic vase, soft shadows"
 ```

@@ -59,20 +59,19 @@ Một script Node **zero-dependency** (dùng native `fetch`, không cài package
 - **text-to-image** — chỉ cần `--prompt`
 - **image-to-image** — thêm `--image <path>` (lặp nhiều lần được) để edit ảnh hoặc ghép nhiều ảnh nguồn
 
-Chỉnh được số lượng ảnh, tỉ lệ khung và độ phân giải (`--aspect` + `--resolution` tới `4k` cho Gemini, thêm `--size` tự do cho OpenAI), chọn trong 11 model qua alias ngắn, thư mục output. Có `--json` để agent parse kết quả. Tự retry khi dính 429/5xx, ảnh nào lỗi thì skip chứ không đánh rơi cả batch.
+Chỉnh được số lượng ảnh, tỉ lệ khung và độ phân giải (`--aspect` + `--resolution` tới `4k` cho Gemini, thêm `--size` tự do cho OpenAI), chọn trong 10 model qua alias ngắn, thư mục output. Có `--json` để agent parse kết quả. Tự retry khi dính 429/5xx, ảnh nào lỗi thì skip chứ không đánh rơi cả batch.
 
-**Yêu cầu:** Node.js 18+ và API key `GEMINI_API_SKILL` hoặc `OPENAI_API_SKILL`. Key lấy theo 3 nấc: biến môi trường, `.env` ở thư mục đang đứng, hoặc `.env` ngay trong thư mục skill — nấc cuối cho phép copy nguyên folder sang máy khác là chạy (xem `.env.example`).
+**Yêu cầu:** Node.js 18+ và **một key `ONEROUTER_KEY` duy nhất** (gateway nội bộ, không cần key riêng của OpenAI hay Google). Key lấy theo 3 nấc: biến môi trường, `.env` ở thư mục đang đứng, hoặc `.env` ngay trong thư mục skill — nấc cuối cho phép copy nguyên folder sang máy khác là chạy (xem `.env.example`).
 
 ### `gen-videos`
-> Gen video bằng AI — text-to-video và image-to-video qua Google Veo
+> Gen video bằng AI — text-to-video và image-to-video qua Gemini Omni
 
-Tạo video từ mô tả bằng chữ, hoặc **làm ảnh tĩnh chuyển động** (đưa thêm đường dẫn ảnh vào là thành image-to-video).
+Tạo video từ mô tả bằng chữ, hoặc **làm ảnh tĩnh chuyển động** (đưa thêm `--image` vào là thành image-to-video).
 
-Video render lâu, nên script submit job xong sẽ **tự poll mỗi 10s** cho tới khi xong rồi tải file MP4 về — không phải ngồi canh.
-Chỉnh được model (`VEO_MODEL`) và tỉ lệ khung (`VEO_ASPECT_RATIO`: `16:9` hoặc `9:16`). Mặc định `veo-3.0-generate-001` có kèm audio; key/region nào chưa hỗ trợ Veo 3 thì hạ xuống `veo-2.0-generate-001` (không audio).
+Video render lâu, nên script tạo job xong sẽ **tự poll mỗi 5s** cho tới khi xong rồi tải file MP4 về — không phải ngồi canh. Chỉnh được độ dài (3-15 giây), tỉ lệ khung (`16:9` / `9:16`) và độ phân giải tới `4k`.
 
-**Yêu cầu:** Node.js 18+, API key ở biến `GEMINI_API_SKILL` (dùng chung với `gen-images`), và phải chạy `npm install` trong thư mục `scripts/` của skill.
-⚠️ Veo **chỉ chạy trên tài khoản Google AI Studio đã bật billing** — free tier không có video.
+**Yêu cầu:** Node.js 18+ và `ONEROUTER_KEY` (dùng chung với `gen-images`). **Zero-dependency**, không phải `npm install` gì cả.
+⚠️ Google đã đóng Veo và OpenAI đã đóng Sora trong 2026 — skill dùng dòng `gemini-omni-*` thay thế.
 
 ### `hub-shared`
 > Upload file qua app hub và trả về link public trên CDN

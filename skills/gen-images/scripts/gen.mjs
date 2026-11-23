@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// gen-images: text-to-image & image-to-image via Gemini (default) or OpenAI.
-// Zero dependencies - uses native fetch / FormData / Blob (Node 18+).
+// gen-images: text-to-image & image-to-image through OneRouter (POST /v1/images).
+// Zero dependencies - uses native fetch (Node 18+).
 // Cross-platform: no external binaries, runs on macOS, Windows and Linux.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const DEFAULT_BASE_URL = 'https://model.hbcommerce.co';
 
 const DEFAULT_MODEL = {
   gemini: 'gemini-3.1-flash-image',
@@ -18,7 +20,6 @@ const MODEL_ALIAS = {
     'flash-lite': 'gemini-3.1-flash-lite-image',
     pro: 'gemini-3-pro-image',
     '2.1': 'gemini-nano-banana-2.1',
-    'pro-preview': 'nano-banana-pro-preview',
     '2.5-flash': 'gemini-2.5-flash-image',
   },
   openai: {
@@ -35,7 +36,8 @@ const RESOLUTIONS = ['1k', '2k', '4k'];
 // OpenAI doi 2.x tran canh dai 3840 nen khong voi toi bac 4k
 const GEMINI_ONLY_RESOLUTIONS = ['4k'];
 
-// Dung chung cho ca 2 provider: do thuc te cho thay OpenAI nhan het cac size nay.
+// Chi dung cho OpenAI: OneRouter can `size` tuong minh, con Gemini nhan
+// `aspect_ratio` + `resolution` nen khong phai quy ra pixel.
 const OUTPUT_SIZE = {
   '1:1': { '1k': [1024, 1024], '2k': [2048, 2048], '4k': [4096, 4096] },
   '9:16': { '1k': [768, 1376], '2k': [1536, 2752], '4k': [3072, 5504] },
@@ -45,8 +47,13 @@ const OUTPUT_SIZE = {
 const OPENAI_SIZE_STEP = 16;
 const OPENAI_MAX_EDGE = 3840;
 
-const OPENAI_MAX_N = 10;
-const GEMINI_CONCURRENCY = 3;
+// Gioi han cua OneRouter (muc 8 trong docs)
+const MAX_N_PER_REQUEST = 4;
+const MAX_REF_IMAGES = 14;
+const MAX_REF_BYTES = 20 * 1024 * 1024;
+const MAX_BODY_BYTES = 60 * 1024 * 1024;
+const REQUEST_CONCURRENCY = 3;
+
 const MIME_BY_EXT = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -60,9 +67,8 @@ const EXT_BY_MIME = {
   'image/webp': '.webp',
 };
 
-
-// --- Tim API key: shell > .env o thu muc dang dung > .env canh script ---
-// Parser toi gian co y: chi KEY=value, du cho 2 cai key va giu duoc Node 18+
+// --- Tim key: shell > .env o thu muc dang dung > .env canh skill ---
+// Parser toi gian co y: chi KEY=value, du dung va giu duoc Node 18+
 // (process.loadEnvFile can Node 20.12+, se pha loi hua Node 18 trong README).
 function parseEnv(text) {
   const out = {};
@@ -85,7 +91,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 // gen.mjs nam trong scripts/, nen thu muc skill (cho co SKILL.md) la cap tren
 const SKILL_DIR = dirname(SCRIPT_DIR);
 
-function readKey(name) {
+function readVar(name) {
   if (process.env[name]) return { value: process.env[name], from: 'shell' };
   const places = [
     [process.cwd(), '.env o thu muc dang dung'],
@@ -93,10 +99,9 @@ function readKey(name) {
     [SCRIPT_DIR, '.env trong scripts/'],
   ];
   for (const [dir, label] of places) {
-    const file = join(dir, '.env');
     let text;
     try {
-      text = readFileSync(file, 'utf8');
+      text = readFileSync(join(dir, '.env'), 'utf8');
     } catch (e) {
       continue;
     }
@@ -110,7 +115,6 @@ function parseArgs(argv) {
   const opts = {
     images: [],
     count: 1,
-    provider: 'gemini',
     aspect: '1:1',
     resolution: '2k',
     out: './gen-images',
@@ -154,6 +158,7 @@ Options:
   --prompt <text>        Prompt (required unless --prompt-file)
   --prompt-file <path>   Read prompt from a file
   --provider <name>      gemini (default) | openai
+                         Inferred from --model when the id is known
   --model <id>           Model id or alias. Defaults:
                            gemini=${DEFAULT_MODEL.gemini}
                            openai=${DEFAULT_MODEL.openai}
@@ -164,12 +169,12 @@ Options:
   --size <WxH>           OpenAI only, overrides --aspect/--resolution.
                          Both edges divisible by ${OPENAI_SIZE_STEP},
                          longest edge <= ${OPENAI_MAX_EDGE}, or "auto"
-  --count, -n <N>        Number of images (default 1)
-  --image, -i <path>     Input image for image-to-image (repeatable)
+  --count, -n <N>        Number of images (default 1), sent ${MAX_N_PER_REQUEST} per request
+  --image, -i <path>     Input image for image-to-image (repeatable, max ${MAX_REF_IMAGES})
   --out, -o <dir>        Output directory (default ./gen-images)
   --json                 Print a JSON summary instead of human text
 
-Env: GEMINI_API_SKILL (gemini), OPENAI_API_SKILL (openai)`;
+Env: ONEROUTER_KEY (required), ONEROUTER_URL (default ${DEFAULT_BASE_URL})`;
 
 function slugify(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'image';
@@ -187,8 +192,16 @@ function mimeOf(path) {
   return mime;
 }
 
+// Mot endpoint chung cho 2 provider nen --model lac provider la hong ngay.
+// Suy nguoc tu id de khoi phai nho go kem --provider.
+function providerOf(modelId) {
+  if (/^(gpt-image|chatgpt-image)/.test(modelId)) return 'openai';
+  if (/^(gemini|nano-banana)/.test(modelId)) return 'gemini';
+  return null;
+}
+
 // Doc kich thuoc tu header, khong goi binary ngoai -> chay duoc ca Windows.
-// Chi can 3 dinh dang script nay sinh ra: PNG, JPEG, WebP.
+// Chi can 3 dinh dang API nay tra ve: PNG, JPEG, WebP.
 function readDimensions(buf) {
   // PNG: IHDR nam ngay sau 8 byte signature, width/height la uint32 BE
   if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504e47) {
@@ -230,6 +243,21 @@ function readDimensions(buf) {
   return { width: null, height: null };
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// OneRouter tra loi theo dang { error: { message, code } }, provider thi giu
+// nguyen dang cua ho -> boc duoc cai nao thi boc, khong thi in raw.
+function describeError(status, body) {
+  try {
+    const j = JSON.parse(body);
+    const e = j.error ?? j;
+    if (e?.message) return `${e.code ? `${e.code}: ` : ''}${e.message}`;
+  } catch (err) {
+    // khong phai JSON, roi xuong duoi in raw
+  }
+  return `HTTP ${status} - ${body.slice(0, 500)}`;
+}
+
 // Retries once on 429 / 5xx. Returns parsed JSON or throws with the API message.
 async function callApi(url, init, label) {
   for (let attempt = 0; ; attempt++) {
@@ -247,11 +275,22 @@ async function callApi(url, init, label) {
       await sleep(res.status === 429 ? 5000 : 2000);
       continue;
     }
-    throw new Error(`${label}: HTTP ${res.status} - ${body.slice(0, 500)}`);
+    throw new Error(`${label}: ${describeError(res.status, body)}`);
   }
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function download(url, label) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      if (attempt === 0) { await sleep(2000); continue; }
+      throw new Error(`${label}: cannot download ${url} - ${e.message}`);
+    }
+  }
+}
 
 async function runPool(tasks, limit) {
   const results = new Array(tasks.length);
@@ -270,95 +309,50 @@ async function runPool(tasks, limit) {
   return results;
 }
 
-// --- Gemini: one image per call, so run `count` calls in a small pool. ---
-async function genGemini({ prompt, model, count, images, aspect, resolution, apiKey }) {
-  const parts = [{ text: prompt }];
-  for (const path of images) {
-    parts.push({
-      inline_data: { mime_type: mimeOf(path), data: (await readFile(path)).toString('base64') },
-    });
+// --- OneRouter: 1 endpoint cho ca 2 provider, toi da 4 anh moi request ---
+async function genImages({ baseUrl, apiKey, model, prompt, count, references, provider, aspect, resolution, size }) {
+  const base = { model, prompt };
+  if (references.length) base.reference_images = references;
+  if (provider === 'openai') {
+    if (size && size !== 'auto') base.size = size;
+    else base.aspect_ratio = aspect;
+  } else {
+    base.aspect_ratio = aspect;
+    base.resolution = resolution.toUpperCase();
   }
-  const body = {
-    contents: [{ parts }],
-    generationConfig: {
-      responseModalities: ['IMAGE'],
-      imageConfig: {
-        aspectRatio: aspect,
-        imageSize: resolution.toUpperCase(),
-      },
-    },
-  };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const init = {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(body),
-  };
 
-  const results = await runPool(
-    Array.from({ length: count }, (_, i) => async () => {
-      const data = await callApi(url, init, `gemini call ${i + 1}`);
-      const inline = (data.candidates?.[0]?.content?.parts ?? [])
-        .map((p) => p.inlineData ?? p.inline_data)
-        .filter(Boolean);
-      if (!inline.length) {
-        const reason = data.candidates?.[0]?.finishReason ?? 'no image in response';
-        throw new Error(`gemini call ${i + 1}: ${reason}`);
-      }
-      return inline.map((p) => ({ b64: p.data, mime: p.mimeType ?? p.mime_type ?? 'image/png' }));
-    }),
-    GEMINI_CONCURRENCY,
-  );
-
-  const out = { images: [], errors: [] };
-  for (const r of results) {
-    if (r.ok) out.images.push(...r.value);
-    else out.errors.push(r.error);
-  }
-  return out;
-}
-
-// --- OpenAI: /generations for text-to-image, /edits for image-to-image. ---
-async function genOpenai({ prompt, model, count, images, size, apiKey }) {
-  const out = { images: [], errors: [] };
   const batches = [];
-  for (let left = count; left > 0; left -= OPENAI_MAX_N) batches.push(Math.min(left, OPENAI_MAX_N));
+  for (let left = count; left > 0; left -= MAX_N_PER_REQUEST) {
+    batches.push(Math.min(left, MAX_N_PER_REQUEST));
+  }
 
-  const files = await Promise.all(
-    images.map(async (path) => ({ path, buf: await readFile(path), mime: mimeOf(path) })),
+  const url = `${baseUrl}/v1/images`;
+  const results = await runPool(
+    batches.map((n, i) => async () => {
+      const label = `request ${i + 1}/${batches.length}`;
+      const data = await callApi(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ ...base, n }),
+      }, label);
+      const items = (data.images ?? []).filter((im) => im.url);
+      if (!items.length) throw new Error(`${label}: no image in response`);
+      return {
+        cost: data.cost_usd ?? 0,
+        buffers: await Promise.all(items.map(async (im) => ({
+          mime: im.mime_type ?? 'image/png',
+          buf: await download(im.url, label),
+        }))),
+      };
+    }),
+    REQUEST_CONCURRENCY,
   );
 
-  for (const [idx, n] of batches.entries()) {
-    const label = `openai batch ${idx + 1}`;
-    try {
-      let init;
-      let url;
-      if (files.length) {
-        url = 'https://api.openai.com/v1/images/edits';
-        const form = new FormData();
-        form.append('model', model);
-        form.append('prompt', prompt);
-        form.append('n', String(n));
-        if (size) form.append('size', size);
-        for (const f of files) {
-          form.append('image[]', new Blob([f.buf], { type: f.mime }), basename(f.path));
-        }
-        init = { method: 'POST', headers: { authorization: `Bearer ${apiKey}` }, body: form };
-      } else {
-        url = 'https://api.openai.com/v1/images/generations';
-        init = {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, prompt, n, ...(size ? { size } : {}) }),
-        };
-      }
-      const data = await callApi(url, init, label);
-      const items = (data.data ?? []).filter((d) => d.b64_json);
-      if (!items.length) throw new Error(`${label}: no image in response`);
-      out.images.push(...items.map((d) => ({ b64: d.b64_json, mime: 'image/png' })));
-    } catch (e) {
-      out.errors.push(e.message);
-    }
+  const out = { images: [], errors: [], cost: 0 };
+  for (const r of results) {
+    if (!r.ok) { out.errors.push(r.error); continue; }
+    out.images.push(...r.value.buffers);
+    out.cost += r.value.cost;
   }
   return out;
 }
@@ -374,16 +368,26 @@ async function main() {
   if (opts.promptFile) prompt = (await readFile(opts.promptFile, 'utf8')).trim();
   if (!prompt) fail(`--prompt (or --prompt-file) is required.\n\n${USAGE}`);
 
-  if (!['gemini', 'openai'].includes(opts.provider)) fail(`--provider must be gemini or openai`);
+  if (opts.provider && !['gemini', 'openai'].includes(opts.provider)) {
+    fail(`--provider must be gemini or openai`);
+  }
+  // --model thang hon --provider: id noi ro no thuoc nha nao
+  const aliasHit = opts.model
+    ? (MODEL_ALIAS.gemini[opts.model] ?? MODEL_ALIAS.openai[opts.model])
+    : null;
+  const modelId = aliasHit ?? opts.model ?? null;
+  const provider = (modelId && providerOf(modelId)) ?? opts.provider ?? 'gemini';
+  const model = modelId ?? DEFAULT_MODEL[provider];
+
   if (!Number.isInteger(opts.count) || opts.count < 1) fail(`--count must be a positive integer`);
   if (!ASPECTS.includes(opts.aspect)) fail(`--aspect must be one of: ${ASPECTS.join(', ')}`);
   if (!RESOLUTIONS.includes(opts.resolution)) {
     fail(`--resolution must be one of: ${RESOLUTIONS.join(', ')}`);
   }
-  if (opts.provider === 'openai' && GEMINI_ONLY_RESOLUTIONS.includes(opts.resolution)) {
+  if (provider === 'openai' && GEMINI_ONLY_RESOLUTIONS.includes(opts.resolution)) {
     fail(`--resolution ${opts.resolution} is Gemini-only (OpenAI tops out at ${OPENAI_MAX_EDGE}px per edge).`);
   }
-  if (opts.size && opts.provider !== 'openai') {
+  if (opts.size && provider !== 'openai') {
     fail(`--size is OpenAI-only. For Gemini use --aspect and --resolution.`);
   }
   if (opts.size && opts.size !== 'auto') {
@@ -397,94 +401,112 @@ async function main() {
       fail(`--size: longest edge must be <= ${OPENAI_MAX_EDGE} (got ${w}x${h})`);
     }
   }
+  if (opts.images.length > MAX_REF_IMAGES) {
+    fail(`--image: at most ${MAX_REF_IMAGES} input images (got ${opts.images.length})`);
+  }
 
-  const envVar = opts.provider === 'gemini' ? 'GEMINI_API_SKILL' : 'OPENAI_API_SKILL';
-  const found = readKey(envVar);
+  const found = readVar('ONEROUTER_KEY');
   if (!found) {
     fail(
-      `Missing ${envVar}. Set it one of these ways:\n` +
-        `  1. export ${envVar}=... in your shell\n` +
-        `  2. put ${envVar}=... in ${join(process.cwd(), '.env')}\n` +
-        `  3. put ${envVar}=... in ${join(SKILL_DIR, '.env')}  (travels with the skill folder)`,
+      `Missing ONEROUTER_KEY. Set it one of these ways:\n`
+      + `  1. export ONEROUTER_KEY=... in your shell\n`
+      + `  2. put ONEROUTER_KEY=... in ${join(process.cwd(), '.env')}\n`
+      + `  3. put ONEROUTER_KEY=... in ${join(SKILL_DIR, '.env')}  (travels with the skill folder)`,
     );
   }
   const apiKey = found.value;
+  const baseUrl = (readVar('ONEROUTER_URL')?.value ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
 
-  const model = MODEL_ALIAS[opts.provider][opts.model] ?? opts.model ?? DEFAULT_MODEL[opts.provider];
-
-  const images = opts.images.map((p) => resolve(p));
-  for (const p of images) {
+  // Anh input gui len duoi dang data URL, OneRouter khong doc duoc duong dan local
+  const references = [];
+  let refBytes = 0;
+  for (const p of opts.images.map((x) => resolve(x))) {
+    let buf;
     try {
-      await readFile(p);
+      buf = await readFile(p);
     } catch {
       fail(`Input image not found: ${p}`);
     }
+    if (buf.length > MAX_REF_BYTES) {
+      fail(`Input image too large: ${basename(p)} is ${(buf.length / 1048576).toFixed(1)}MB, limit is 20MB`);
+    }
+    const b64 = buf.toString('base64');
+    refBytes += b64.length;
+    references.push(`data:${mimeOf(p)};base64,${b64}`);
+  }
+  if (refBytes > MAX_BODY_BYTES) {
+    fail(`Input images total ${(refBytes / 1048576).toFixed(1)}MB once encoded, over the 60MB body limit.`);
   }
 
   // --size chi de de tay cho OpenAI, khong co thi suy tu aspect + resolution
   const [aspectWidth, aspectHeight] = OUTPUT_SIZE[opts.aspect][opts.resolution];
-  const size = opts.provider === 'openai'
+  const size = provider === 'openai'
     ? (opts.size ?? `${aspectWidth}x${aspectHeight}`)
     : null;
   const [targetWidth, targetHeight] = size && size !== 'auto'
     ? size.split('x').map(Number)
-    : (size === 'auto' ? [null, null] : [aspectWidth, aspectHeight]);
+    : [null, null];
 
-  const args = {
-    prompt,
-    model,
-    count: opts.count,
-    images,
+  const result = await genImages({
+    baseUrl,
     apiKey,
+    model,
+    prompt,
+    count: opts.count,
+    references,
+    provider,
     aspect: opts.aspect,
     resolution: opts.resolution,
     size,
-  };
-  const result = opts.provider === 'gemini' ? await genGemini(args) : await genOpenai(args);
+  });
 
   const outDir = resolve(opts.out);
   const base = `${stamp()}-${slugify(prompt)}`;
   const files = [];
   const dimensions = [];
+  const warnings = [];
 
   // Chi tao thu muc khi that su co anh, tranh de lai thu muc rong khi gen loi
   if (result.images.length) await mkdir(outDir, { recursive: true });
 
   for (const [i, img] of result.images.entries()) {
-    const path = `${outDir}/${base}-${i + 1}${EXT_BY_MIME[img.mime] ?? '.png'}`;
-    const buf = Buffer.from(img.b64, 'base64');
-    await writeFile(path, buf);
+    const path = join(outDir, `${base}-${i + 1}${EXT_BY_MIME[img.mime] ?? '.png'}`);
+    await writeFile(path, img.buf);
     files.push(path);
 
-    const actual = readDimensions(buf);
+    const actual = readDimensions(img.buf);
     dimensions.push({ file: path, ...actual });
-    if (opts.provider === 'openai' && targetWidth && actual.width
+    if (targetWidth && actual.width
       && (actual.width !== targetWidth || actual.height !== targetHeight)) {
-      throw new Error(
-        `OpenAI size mismatch for ${path}: expected ${targetWidth}x${targetHeight}, got ${actual.width}x${actual.height}`,
+      warnings.push(
+        `${basename(path)}: asked for ${targetWidth}x${targetHeight}, got ${actual.width}x${actual.height}`,
       );
     }
   }
 
   const summary = {
-    provider: opts.provider,
+    provider,
     model,
     keyFrom: found.from,
+    baseUrl,
     aspect: opts.aspect,
     resolution: opts.resolution,
     size,
-    mode: images.length ? 'image-to-image' : 'text-to-image',
+    mode: references.length ? 'image-to-image' : 'text-to-image',
     requested: opts.count,
+    costUsd: Number(result.cost.toFixed(6)),
     files,
     dimensions,
+    warnings,
     errors: result.errors,
   };
 
   if (opts.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else {
-    console.log(`${summary.mode} | ${opts.provider}/${model} | ${files.length}/${opts.count} image(s)`);
+    console.log(`${summary.mode} | ${provider}/${model} | ${files.length}/${opts.count} image(s) | $${summary.costUsd}`);
     for (const d of dimensions) console.log(`${d.file} (${d.width}x${d.height})`);
+    for (const w of warnings) console.error(`WARN: ${w}`);
     for (const e of result.errors) console.error(`FAILED: ${e}`);
   }
 
